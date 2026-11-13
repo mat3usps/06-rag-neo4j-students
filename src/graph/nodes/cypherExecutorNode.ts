@@ -42,7 +42,7 @@ function hasMoreSteps(state: GraphState) {
 }
 
 function handleMultiStepProgression(state: GraphState, results: any[]) {
-    const updatedSubResults = [...(state.subResults ?? []), ...results];
+    const updatedSubResults = [...(state.subResults ?? []), results];
 
     const nextStep = (state.currentStep ?? 0) + 1;
     const multiStepState = {
