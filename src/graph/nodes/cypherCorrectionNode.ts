@@ -1,25 +1,45 @@
-import { OpenRouterService } from '../../services/openrouterService.ts';
-import { Neo4jService } from '../../services/neo4jService.ts';
-import type { GraphState } from '../graph.ts';
+import { CypherCorrectionSchema, getSystemPrompt, getUserPromptTemplate } from "../../prompts/v1/cypherCorrection.ts";
+import { Neo4jService } from "../../services/neo4jService.ts";
+import { OpenRouterService } from "../../services/openrouterService.ts";
+import type { GraphState } from "../graph.ts";
 
-export function createCypherCorrectionNode(
-  llmClient: OpenRouterService,
-  neo4jService: Neo4jService,
-) {
+export function createCypherCorrectionNode(llmClient: OpenRouterService, neo4jService: Neo4jService) {
+    return async (state: GraphState): Promise<Partial<GraphState>> => {
+        try {
+            console.log("Auto-correcting a query...");
+            const schema = await neo4jService.getSchema();
+            const systemPrompt = getSystemPrompt(schema);
+            const userPrompt = getUserPromptTemplate(state.query!, state.validationError!, state.question);
 
-  return async (state: GraphState): Promise<Partial<GraphState>> => {
+            const { data, error } = await llmClient.generateStructured(
+                systemPrompt,
+                userPrompt,
+                CypherCorrectionSchema
+            );
 
-    try {
+            if (error) {
+                return {
+                    ...state,
+                    error: `Query correction failed: ${error ?? "Unknown error"}`,
+                };
+            }
 
-      return {
-        ...state,
-      };
-    } catch (error: any) {
-      console.error('Error correcting query:', error.message);
-      return {
-        ...state,
-        error: `Query correction failed: ${error.message}`,
-      };
-    }
-  };
+            console.log(`Query corrected: ${data?.explanation}`);
+
+            return {
+                ...state,
+                query: data?.correctedQuery,
+                originalQuery: state.originalQuery ?? state.query,
+                correctionAttempts: (state.correctionAttempts ?? 0) + 1,
+                validationError: undefined,
+                needsCorrection: false,
+            };
+        } catch (error: any) {
+            console.error("Error correcting query:", error.message);
+            return {
+                ...state,
+                error: `Query correction failed: ${error.message}`,
+            };
+        }
+    };
 }
